@@ -6,19 +6,19 @@
 
 #include "memory.h"
 
-void mem_init (memory mem, size_t size) {
+void mem_init (memory *mem, int size) {
   mem->arr = malloc(sizeof(byte)*size);
 }
 
-void mem_write (memory mem, addr a, byte b) {
+void mem_write (memory *mem, addr a, byte b) {
   mem->arr[a] = b;
 }
 
-byte mem_read (memory mem, addr a) {
-  return mem_arr[a];
+byte mem_read (memory *mem, addr a) {
+  return mem->arr[a];
 }
 
-void mem_destroy (memory mem) {
+void mem_destroy (memory *mem) {
   free(mem->arr);
 }
 

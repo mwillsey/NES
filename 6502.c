@@ -13,11 +13,11 @@
 /* use these wrappers because the stack is from 0x01ff to 0x100 */
 
 void push_byte (cpu *c, byte b) {
-  mem_write(c->mem, c->SP--, b);
+  mem_write(c->mem, 0x100 + c->SP--, b);
 }
 
 byte pull_byte (cpu *c) {
-  return mem_read(c->mem, ++(c->SP));
+  return mem_read(c->mem, 0x100 + ++(c->SP));
 }
 
 void push_word (cpu *c, addr a) {
@@ -369,7 +369,7 @@ void BIT (cpu *c, addr a) {
 /* add with carry */
 void ADC (cpu *c, addr a) {
   byte sum, j, k, c6, c7;
-  byte b = mem_read(c->mem, a)
+  byte b = mem_read(c->mem, a);
   /* NES actually ignores decimal mode, but you could enter this if in 
    * decimal mode and it should work. */
   if (0) {
@@ -389,7 +389,7 @@ void ADC (cpu *c, addr a) {
 
   } else {
     /* binary mode ADC can seem weird, but you really only need the leading 
-     * bits of the operands and the 6 carry bit from the partial sum. refer to: 
+     * bits of the operands and the 6 carry bit from the partial sum. refer to 
      * http://www.righto.com/2012/12/the-6502-overflow-flag-explained.html */
     /* j and k will represent the first bits of the operands */
     j = (b >> 7) & 0x1;
@@ -411,8 +411,9 @@ void ADC (cpu *c, addr a) {
 /* subtract with carry (borrow) */
 void SBC (cpu *c, addr a) {
   /* just use the addition logic on the negated byte */
-  byte n = ~mem_read(c->mem, a);
-  ADC(c, &n);
+  mem_write(c->mem, a, ~mem_read(c->mem, a));
+  ADC(c, a);
+  mem_write(c->mem, a, ~mem_read(c->mem, a));
 }
 
 /* compare accumulator */
@@ -452,9 +453,10 @@ void CPY (cpu *c, addr a) {
 /* inc/dec on registers use implied addressing, so no second parameter */
 
 /* increment a memory location */
-void INC (cpu *c, byte *b) {
-  mem_write(c->mem, a, mem_read(c->mem, a) + 1);
-  set_zn_flags(c, *b);
+void INC (cpu *c, addr a) {
+  byte b = mem_read(c->mem, a) + 1;
+  mem_write(c->mem, a, b);
+  set_zn_flags(c, b);
 }
 
 /* increment X register */
@@ -470,9 +472,10 @@ void INY (cpu *c) {
 }
 
 /* decrement a memory location */
-void DEC (cpu *c, byte *b) {
-  (*b)--;
-  set_zn_flags(c, *b);
+void DEC (cpu *c, addr a) {
+  byte b = mem_read(c->mem, a) + 1;
+  mem_write(c->mem, a, b);
+  set_zn_flags(c, b);
 }
 
 /* decrement X register */
@@ -491,42 +494,53 @@ void DEY (cpu *c) {
  * ----- shifts -----
  */
 
+/* these operations can work directly on the accumulator, which will
+ * be indicated by an address of -1 */
+
 /* arithmetic shift left */
-void ASL (cpu *c, byte *b) {
+void ASL (cpu *c, addr a) {
+  byte b = mem_read(c->mem, a);
   /* set carry if we're shifting a bit out */
-  set_flag(c, C, *b & 0x80); 
-  *b <<= 1;
-  set_zn_flags(c, *b);
+  set_flag(c, C, b & 0x80); 
+  b <<= 1;
+  mem_write(c->mem, a, b);
+  set_zn_flags(c, b);
 }
 
 /* logical shift right */
-void LSR (cpu *c, byte *b) {
+void LSR (cpu *c, addr a) {
+  byte b = mem_read(c->mem, a);
   /* set carry if we're shifting a bit out */
-  set_flag(c, C, *b & 0x1);
-  *b >>= 1;
-  set_zn_flags(c, *b);
+  set_flag(c, C, b & 0x1); 
+  b >>= 1;
+  mem_write(c->mem, a, b);
+  set_zn_flags(c, b);
 }
 
 /* rotate left */
-void ROL (cpu *c, byte *b) {
-  byte bit;
+void ROL (cpu *c, addr a) {
+  byte bit, b;
+  b = mem_read(c->mem, a);
   /* save most significant bit to put in carry */
-  bit = (*b >> 7) & 0x1;
-  *b = (*b << 1) | get_flag(c, C);
+  bit = (b >> 7) & 0x1;
+  b = (b << 1) | get_flag(c, C);
+  mem_write(c->mem, a, b);
   set_flag(c, C, bit);
   /* set zero and negative flags */
-  set_zn_flags(c, *b);
+  set_zn_flags(c, b);
 }
 
 /* rotate right */
-void ROR (cpu *c, byte *b) {
-  byte bit;
-  /* save least significant bit to put in carry */
-  bit = *b & 0x1;
-  *b = (*b >> 1) | (get_flag(c, C) << 7);
+void ROR (cpu *c, addr a) {
+  byte bit, b;
+  b = mem_read(c->mem, a);
+  /* save most significant bit to put in carry */
+  bit = b & 0x1;
+  b = (b >> 1) | (get_flag(c, C) << 7);
+  mem_write(c->mem, a, b);
   set_flag(c, C, bit);
   /* set zero and negative flags */
-  set_zn_flags(c, *b);
+  set_zn_flags(c, b);
 }
 
 /* 
@@ -536,24 +550,18 @@ void ROR (cpu *c, byte *b) {
 /* return uses implied addressing, so no second parameter */
 
 /* jump to another location */
-void JMP (cpu *c, byte *b) {
-  /* jump to a word indicated by the operand */
-  /* have to subtract because PC is an index into memory */
-  c->PC = b - c->mem;
+void JMP (cpu *c, addr a) {
+  c->PC = mem_read(c->mem, a);
 }
 
 /* jump to subroutine */
-void JSR (cpu *c, byte *b) {
-  /* push PC to stack  */
+void JSR (cpu *c, addr a) {
   push_word(c, c->PC - 1);
-  /* jump to the indicated address */
-  /* have to subtract because PC is an index into memory */
-  c->PC = b - c->mem;
+  c->PC = mem_read(c->mem, a);
 }
 
 /* return from subroutine */
 void RTS (cpu *c) {
-  /* pull PC from stack */
   c->PC = pull_word(c) + 1;
 }
 
@@ -562,51 +570,51 @@ void RTS (cpu *c) {
  */
 
 /* branch if carry set */
-void BCS (cpu *c, byte *b) {
+void BCS (cpu *c, addr a) {
   if (get_flag(c, C))
-    c->PC += (int8_t)(*b);
+    c->PC += (int8_t)mem_read(c->mem, a);
 }
 
 /* branch if carry clear */
-void BCC (cpu *c, byte *b) {
+void BCC (cpu *c, addr a) {
   if (!get_flag(c, C))
-    c->PC += (int8_t)(*b);
+    c->PC += (int8_t)mem_read(c->mem, a);
 }
 
 /* branch if equal (zero set) */
-void BEQ (cpu *c, byte *b) {
+void BEQ (cpu *c, addr a) {
   if (get_flag(c, Z))
-    c->PC += (int8_t)(*b);
+    c->PC += (int8_t)mem_read(c->mem, a);
 }
 
 /* branch if not equal (zero clear) */
-void BNE (cpu *c, byte *b) {
+void BNE (cpu *c, addr a) {
   if (!get_flag(c, Z))
-    c->PC += (int8_t)(*b);
+    c->PC += (int8_t)mem_read(c->mem, a);
 }
 
 /* branch if minus (negative set) */
-void BMI (cpu *c, byte *b) {
+void BMI (cpu *c, addr a) {
   if (get_flag(c, N))
-    c->PC += (int8_t)(*b);
+    c->PC += (int8_t)mem_read(c->mem, a);
 }
 
 /* branch if positive (negative clear) */
-void BPL (cpu *c, byte *b) {
+void BPL (cpu *c, addr a) {
   if (!get_flag(c, N))
-    c->PC += (int8_t)(*b);
+    c->PC += (int8_t)mem_read(c->mem, a);
 }
 
 /* branch if overflow set */
-void BVS (cpu *c, byte *b) {
+void BVS (cpu *c, addr a) {
   if (get_flag(c, V))
-    c->PC += (int8_t)(*b);
+    c->PC += (int8_t)mem_read(c->mem, a);
 }
 
 /* branch if overflow clear */
-void BVC (cpu *c, byte *b) {
+void BVC (cpu *c, addr a) {
   if (!get_flag(c, V))
-    c->PC += (int8_t)(*b);
+    c->PC += (int8_t)mem_read(c->mem, a);
 }
 
 /* 
@@ -659,7 +667,6 @@ void SEI (cpu *c) {
 /* force interrupt */
 void BRK (cpu *c) {
   byte lo, hi;
-  word a;
   /* push PC then P onto the stack */
   /* bit 4 is always set when pushed to the stack */
   push_word(c, c->PC);
@@ -667,10 +674,9 @@ void BRK (cpu *c) {
   /* set break flag */
   set_flag(c, B, 1);
   /* load interrupt vector at 0xFFFE/F */
-  lo = c->mem[0xFFFE];
-  hi = c->mem[0xFFFF];
-  a = ((word)(hi) << 8) | lo;
-  c->PC = c->mem[a];
+  lo = mem_read(c->mem, 0xfffe);
+  hi = mem_read(c->mem, 0xffff);
+  c->PC = ((addr)(hi) << 8) | lo;
 }
 
 /* no operation */
@@ -701,7 +707,9 @@ void RTI (cpu *c) {
  */
 
 /* initializes a cpu */
-void cpu_init (cpu *c) {
+void cpu_init (cpu *c, memory *mem) {
+  /* link to the memory */
+  c->mem = mem;
   /* only these flags are guaranteed at startup */
   set_flag(c, I, 1);
   set_flag(c, D, 0);
@@ -710,17 +718,14 @@ void cpu_init (cpu *c) {
   /* set stack pointer */
   c->SP = 0xfd;
   /* load program counter to address at 0xfffc/d*/
-  c->PC = ((word)(c->mem[0xfffd]) << 4) | c->mem[0xfffc];
-  /* initialize pointers to memory */
-  c->cartidge_upper_bank = &c->mem[0xc000];
-  c->cartidge_lower_bank = &c->mem[0x8000];
+  c->PC = ((addr)(mem_read(c->mem, 0xfffd)) << 8) | mem_read(c->mem, 0xfffc);
 }
 
 /* returns 0 on successful execution of a single instruction */
 int cpu_step (cpu *c) {
   byte op;
 
-  op = c->mem[c->PC];
+  op = mem_read(c->mem, c->PC);
 
   printf("%04X  %02X A:%02X X:%02X Y:%02X P:%02X SP:%02X\n",
          c->PC, op, c->A, c->X, c->Y, c->P, c->SP);

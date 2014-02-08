@@ -6,6 +6,7 @@ int main (int argc, char** argv) {
   FILE *in;
   struct stat in_stat;
   cpu nes_cpu;
+  memory mem;
 
   if (argc != 2) {
     printf("Invalid number of arguments. Please supply just one ROM file.\n");
@@ -18,7 +19,10 @@ int main (int argc, char** argv) {
     return 1;
   }
 
-  cpu_init(&nes_cpu);
+  /* init some memory */
+  mem_init(&mem, 0x10000);
+
+  cpu_init(&nes_cpu, &mem);
 
   /* TODO: size checking */
   /* fstat(fileno(in), &in_stat); */
@@ -29,7 +33,7 @@ int main (int argc, char** argv) {
   /*   fread(nes_cpu.cartidge_lower_bank, sizeof(byte), in_stat.st_size, in); */
 
   /* for the nestest rom */
-  fread(nes_cpu.cartidge_upper_bank-16, sizeof(byte), 0x4000, in);
+  fread(mem.arr+0x8000-16, sizeof(byte), 0x4000, in);
   nes_cpu.PC = 0xc000;
 
   for(int i = 0; i < 10000; i++) {
