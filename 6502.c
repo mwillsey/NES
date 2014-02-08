@@ -13,27 +13,23 @@
 /* use these wrappers because the stack is from 0x01ff to 0x100 */
 
 void push_byte (cpu *c, byte b) {
-  c->mem[0x100 + c->SP] = b;
-  c->SP--;
+  mem_write(c->mem, c->SP--, b);
 }
 
 byte pull_byte (cpu *c) {
-  c->SP++;
-  return c->mem[0x100 + c->SP];
+  return mem_read(c->mem, ++(c->SP));
 }
 
-void push_word (cpu *c, word w) {
-  /* push lo then hi*/
-  push_byte(c, (byte)(w >> 8));
-  push_byte(c, (byte)(w));
+void push_word (cpu *c, addr a) {
+  push_byte(c, (byte)(a >> 8));
+  push_byte(c, (byte)(a));
 }
 
-word pull_word (cpu *c) {
+addr pull_word (cpu *c) {
   byte lo, hi;
-  /* pull hi then lo */
   lo = pull_byte(c);
   hi = pull_byte(c);
-  return ((word)(hi) << 8) | lo;
+  return ((addr)(hi) << 8) | lo;
 }
 
 
@@ -79,103 +75,91 @@ void set_zn_flags (cpu *c, byte b) {
  */
 
 
-/* addressing will be handled by handing every intruction a pointer
- * to the byte it will be operating on. That way intructions can be
+/* addressing will be handled by handing every instruction the address
+ * of the byte it will be operating on. That way intructions can be
  * coded without knowledge of their addressing mode. Addressing will also
  * handle incrementing the PC according to the number of arguments */
 
 /* accumulator
- * the instruction will operate directly on the accumulator 
+ * this addressing mode is an expection in that the operation works on a
+ * register as opposed to on memory. Operations that this applies to need
+ * to be aware of this, so we'll simply send -1.
  */
-byte *addr_accumulator (cpu *c) { 
-  return &c->A;
-}
+
+static const addr am_acc = -1;
 
 /* immediate
  * the constant immediately follows in instruction in memory 
  * we will work with the invariant that the PC is incremented until 
  * the instruction is complete
  */
-byte *addr_immediate (cpu *c) { 
-  return &c->mem[c->PC++]; 
+addr am_imm (cpu *c) { 
+  return c->PC++; 
 }
 
 /* zero page 
  * only an 8-bit address operand is given, so only the first 0x100 (256) 
  * bytes of memory can be addressed (0x0000 - 0x00FF)
  */
-byte *addr_zero_page (cpu *c) { 
-  byte a;
-  a = c->mem[c->PC++];
-  //printf("%04x    ", (word)a);
-  return &c->mem[(word)(a)];
+addr am_zer (cpu *c) { 
+  return (addr)mem_read(c->mem, c->PC++);
 }
 
 /* zero page,x
  * address to be accessed is the 8-bit value given in the instruction 
  * summed with the X register
  */
-byte *addr_zero_page_x (cpu *c) {
-  byte a;
-  a = c->mem[c->PC++] + c->X;
-  return &c->mem[(word)(a)];
+addr am_zex (cpu *c) {
+  return (addr)(mem_read(c->mem, c->PC++) + c->X);
 }
 
 /* zero page,y
  * address to be accessed is the 8-bit value given in the instruction 
  * summed with the X register
  */
-byte *addr_zero_page_y (cpu *c) {
-  byte a;
-  a = c->mem[c->PC++] + c->Y;
-  return &c->mem[(word)(a)];
+addr am_zey (cpu *c) {
+  return (addr)(mem_read(c->mem, c->PC++) + c->Y);
 }
 
 /* relative
  * addressing is identical to immediate, just handled in a signed manner
  * by the branch instructions
  */
-byte *addr_relative (cpu *c) { 
-  return &c->mem[c->PC++]; 
+addr am_rel (cpu *c) { 
+  return c->PC++; 
 }
 
 /* absolute
  * full address to be operated on is given 2 bytes following instruction 
  * don't forget the 6502 is least significant byte first
  */
-byte *addr_absolute (cpu *c) {
+addr am_abs (cpu *c) {
   byte lo, hi;
-  word a;
-  lo = c->mem[c->PC++];
-  hi = c->mem[c->PC++];
-  a = ((word)(hi) << 8) | lo;
-  return &c->mem[a];
+  lo = mem_read(c->mem, c->PC++);
+  hi = mem_read(c->mem, c->PC++);
+  return ((addr)(hi) << 8) | lo;
 }
 
 /* absolute,x
  * uses the full address given in the 2 bytes following instruction, but
  * also adds the X register
  */
-byte *addr_absolute_x (cpu *c) {
+addr am_abx (cpu *c) {
   byte lo, hi;
-  word a;
-  lo = c->mem[c->PC++];
-  hi = c->mem[c->PC++];
-  a = (((word)(hi) << 8) | lo)  + c->X;
-  return &c->mem[a];
+  lo = mem_read(c->mem, c->PC++);
+  hi = mem_read(c->mem, c->PC++);
+  return (((addr)(hi) << 8) | lo) + c->X;
 }
 
 /* absolute,y
  * uses the full address given in the 2 bytes following instruction, but
  * also adds the Y register
  */
-byte *addr_absolute_y (cpu *c) {
+addr am_aby (cpu *c) {
   byte lo, hi;
-  word a;
-  lo = c->mem[c->PC++];
-  hi = c->mem[c->PC++];
-  a = (((word)(hi) << 8) | lo) + (word)c->Y;
-  return &c->mem[a];
+  lo = mem_read(c->mem, c->PC++);
+  hi = mem_read(c->mem, c->PC++);
+  return (((addr)(hi) << 8) | lo) + c->Y;
 }
 
 /* indirect
@@ -184,20 +168,19 @@ byte *addr_absolute_y (cpu *c) {
  * address you want. For our purposes, this is identical to absolute 
  * addressing
  */
-byte *addr_indirect (cpu *c) {
+addr am_ind (cpu *c) {
   byte lo, hi, lo2, hi2;
-  word a, a2, a1;
-  lo = c->mem[c->PC++];
-  hi = c->mem[c->PC++];
-  a = ((word)(hi) << 8) | lo;
+  addr a, a1;
+  lo = mem_read(c->mem, c->PC++);
+  hi = mem_read(c->mem, c->PC++);
+  a = ((addr)(hi) << 8) | lo;
   /* a1 is a + 1 in most cases, except to represnt a bug in the hardware 
    * where it really only adds 1 to the lo byte*/
-  a1 = ((word)(hi) << 8) | (byte)(lo + 1);
+  a1 = ((addr)(hi) << 8) | (byte)(lo + 1);
   /* now start getting the target address */
-  lo2 = c->mem[a];
-  hi2 = c->mem[a1];
-  a2 = ((word)(hi2) << 8) | lo2;
-  return &c->mem[a2];
+  lo2 = mem_read(c->mem, a);
+  hi2 = mem_read(c->mem, a1);
+  return ((addr)(hi2) << 8) | lo2;
 } 
 
 /* indexed indirect
@@ -205,28 +188,24 @@ byte *addr_indirect (cpu *c) {
  * following the instruction gives the base address, and the index is in 
  * the X register. That will contain the LSB of the target address
  */
-byte *addr_indexed_indirect (cpu *c) {
+addr am_inx (cpu *c) {
   byte base, lo, hi;
-  word a;
-  base = c->mem[c->PC++];
+  base = mem_read(c->mem, c->PC++);
   lo = base + c->X;
   hi = base + c->X + 1;
-  a = ((word)(c->mem[hi]) << 8) | c->mem[lo];
-  return &c->mem[a];
+  return ((addr)mem_read(c->mem, hi) << 8) | mem_read(c->mem, lo);
 }
 
 /* indirect indexed
  * byte following instruction is the zero page address of the LSB of a 16-bit
  * address. Then add the Y-register to that
  */
-byte *addr_indirect_indexed (cpu *c) {
+addr am_iny (cpu *c) {
   byte z, lo, hi;
-  word a;
-  z = c->mem[c->PC++];
+  z = mem_read(c->mem, c->PC++);
   lo = z;
   hi = z + 1;
-  a = (((word)(c->mem[hi]) << 8) | c->mem[lo]) + c->Y;
-  return &c->mem[a];
+  return (((addr)(mem_read(c->mem, hi)) << 8) | mem_read(c->mem, lo)) + c->Y;
 }
 
 
@@ -245,36 +224,36 @@ byte *addr_indirect_indexed (cpu *c) {
  */
 
 /* load accumulator */
-void LDA (cpu *c, byte *b) {
-  c->A = *b;
+void LDA (cpu *c, addr a) {
+  c->A = mem_read(c->mem, a);
   set_zn_flags(c, c->A);
 }
 
 /* load X register */
-void LDX (cpu *c, byte *b) {
-  c->X = *b;
+void LDX (cpu *c, addr a) {
+  c->X = mem_read(c->mem, a);
   set_zn_flags(c, c->X);
 }
 
 /* load Y register */
-void LDY (cpu *c, byte *b) {
-  c->Y = *b;
+void LDY (cpu *c, addr a) {
+  c->Y = mem_read(c->mem, a);
   set_zn_flags(c, c->Y);
 }
 
 /* store accumulator */
-void STA (cpu *c, byte *b) {
-  *b = c->A;
+void STA (cpu *c, addr a) {
+  mem_write(c->mem, a, c->A);
 }
 
 /* store X register */
-void STX (cpu *c, byte *b) {
-  *b = c->X;
+void STX (cpu *c, addr a) {
+  mem_write(c->mem, a, c->X);
 }
 
 /* store Y register */
-void STY (cpu *c, byte *b) {
-  *b = c->Y;
+void STY (cpu *c, addr a) {
+  mem_write(c->mem, a, c->Y);
 }
 
 /* 
@@ -356,30 +335,31 @@ void PLP (cpu *c) {
  */
 
 /* logical and */
-void AND (cpu *c, byte *b) {         
-  c->A &= *b;
+void AND (cpu *c, addr a) {         
+  c->A &= mem_read(c->mem, a);
   set_zn_flags(c, c->A);
 }
 
 /* exclusive or */
-void EOR (cpu *c, byte *b) {         
-  c->A ^= *b;
+void EOR (cpu *c, addr a) {         
+  c->A ^= mem_read(c->mem, a);
   set_zn_flags(c, c->A);
 }
 
 /* inclusive or */
-void ORA (cpu *c, byte *b) {         
-  c->A |= *b;
+void ORA (cpu *c, addr a) {         
+  c->A |= mem_read(c->mem, a);
   set_zn_flags(c, c->A);
 }
 
 /* bit test */
-void BIT (cpu *c, byte *b) {
+void BIT (cpu *c, addr a) {
+  byte b = mem_read(c->mem, a);
   /* set zero flag according and but don't keep result */
-  set_flag(c, Z, !(*b & c->A));
+  set_flag(c, Z, !(b & c->A));
   /* set overflow and negative flags to bits 6,7 */
-  set_flag(c, V, *b & 0x40);
-  set_flag(c, N, *b & 0x80);
+  set_flag(c, V, b & 0x40);
+  set_flag(c, N, b & 0x80);
 }
 
 /* 
@@ -387,14 +367,14 @@ void BIT (cpu *c, byte *b) {
  */
 
 /* add with carry */
-void ADC (cpu *c, byte *b) {
+void ADC (cpu *c, addr a) {
   byte sum, j, k, c6, c7;
-
-  /* NES actually ignore decimal mode, but you could enter this if in 
+  byte b = mem_read(c->mem, a)
+  /* NES actually ignores decimal mode, but you could enter this if in 
    * decimal mode and it should work. */
   if (0) {
     /* in decimal mode, j and k will be the decimal interpreted operands */
-    j = 10 * (*b >> 4) + (*b & 0x0F);
+    j = 10 * (b >> 4) + (b & 0x0F);
     k = 10 * (c->A >> 4) + (c->A & 0x0F);
     sum = j + k + get_flag(c, C);
     /* set flag if sum exceeds 99 */
@@ -412,9 +392,9 @@ void ADC (cpu *c, byte *b) {
      * bits of the operands and the 6 carry bit from the partial sum. refer to: 
      * http://www.righto.com/2012/12/the-6502-overflow-flag-explained.html */
     /* j and k will represent the first bits of the operands */
-    j = (*b >> 7) & 0x1;
+    j = (b >> 7) & 0x1;
     k = (c->A >> 7) & 0x1;
-    sum = c->A + *b + get_flag(c, C);
+    sum = c->A + b + get_flag(c, C);
     /* c6 is the 6th carry bit */
     c6 = j ^ k ^ ((sum >> 7) & 0x1);
     /* c7 is the outgoing carry bit */
@@ -429,37 +409,40 @@ void ADC (cpu *c, byte *b) {
 }
 
 /* subtract with carry (borrow) */
-void SBC (cpu *c, byte *b) {
+void SBC (cpu *c, addr a) {
   /* just use the addition logic on the negated byte */
-  byte n = ~*b;
+  byte n = ~mem_read(c->mem, a);
   ADC(c, &n);
 }
 
 /* compare accumulator */
-void CMP (cpu *c, byte *b) {
-  byte r;
-  r = c->A - *b;
+void CMP (cpu *c, addr a) {
+  byte b, r;
+  b = mem_read(c->mem, a);
+  r = c->A - b;
   /* set flags based on difference */
   set_zn_flags(c, r);
-  set_flag(c, C, c->A >= *b);
+  set_flag(c, C, c->A >= b);
 }
 
 /* compare X register */
-void CPX (cpu *c, byte *b) {
-  byte r;
-  r = c->X - *b;
+void CPX (cpu *c, addr a) {
+  byte b, r;
+  b = mem_read(c->mem, a);
+  r = c->X - b;
   /* set flags based on difference */
   set_zn_flags(c, r);
-  set_flag(c, C, c->X >= *b);
+  set_flag(c, C, c->X >= b);
 }
 
 /* compare Y register */
-void CPY (cpu *c, byte *b) {
-  byte r;
-  r = c->Y - *b;
+void CPY (cpu *c, addr a) {
+  byte b, r;
+  b = mem_read(c->mem, a);
+  r = c->Y - b;
   /* set flags based on difference */
   set_zn_flags(c, r);
-  set_flag(c, C, c->Y >= *b);
+  set_flag(c, C, c->Y >= b);
 }
 
 /* 
@@ -470,7 +453,7 @@ void CPY (cpu *c, byte *b) {
 
 /* increment a memory location */
 void INC (cpu *c, byte *b) {
-  (*b)++;
+  mem_write(c->mem, a, mem_read(c->mem, a) + 1);
   set_zn_flags(c, *b);
 }
 
@@ -747,74 +730,74 @@ int cpu_step (cpu *c) {
   /* alphabetical by instruction */
   switch (op) {
     /* ADC */
-  case 0x69: ADC(c, addr_immediate(c));        break;
-  case 0x65: ADC(c, addr_zero_page(c));        break;
-  case 0x75: ADC(c, addr_zero_page_x(c));      break;
-  case 0x6d: ADC(c, addr_absolute(c));         break; 
-  case 0x7d: ADC(c, addr_absolute_x(c));       break;
-  case 0x79: ADC(c, addr_absolute_y(c));       break;
-  case 0x61: ADC(c, addr_indexed_indirect(c)); break;
-  case 0x71: ADC(c, addr_indirect_indexed(c)); break;
+  case 0x69: ADC(c, am_imm(c));        break;
+  case 0x65: ADC(c, am_zer(c));        break;
+  case 0x75: ADC(c, am_zex(c));      break;
+  case 0x6d: ADC(c, am_abs(c));         break; 
+  case 0x7d: ADC(c, am_abx(c));       break;
+  case 0x79: ADC(c, am_aby(c));       break;
+  case 0x61: ADC(c, am_inx(c)); break;
+  case 0x71: ADC(c, am_iny(c)); break;
     /* AND */
-  case 0x29: AND(c, addr_immediate(c));        break;
-  case 0x25: AND(c, addr_zero_page(c));        break;
-  case 0x35: AND(c, addr_zero_page_x(c));      break;
-  case 0x2d: AND(c, addr_absolute(c));         break; 
-  case 0x3d: AND(c, addr_absolute_x(c));       break;
-  case 0x39: AND(c, addr_absolute_y(c));       break;
-  case 0x21: AND(c, addr_indexed_indirect(c)); break;
-  case 0x31: AND(c, addr_indirect_indexed(c)); break;
+  case 0x29: AND(c, am_imm(c));        break;
+  case 0x25: AND(c, am_zer(c));        break;
+  case 0x35: AND(c, am_zex(c));      break;
+  case 0x2d: AND(c, am_abs(c));         break; 
+  case 0x3d: AND(c, am_abx(c));       break;
+  case 0x39: AND(c, am_aby(c));       break;
+  case 0x21: AND(c, am_inx(c)); break;
+  case 0x31: AND(c, am_iny(c)); break;
     /* ASL */
-  case 0x0a: ASL(c, addr_accumulator(c));      break;
-  case 0x06: ASL(c, addr_zero_page(c));        break;
-  case 0x16: ASL(c, addr_zero_page_x(c));      break;
-  case 0x0e: ASL(c, addr_absolute(c));         break; 
-  case 0x1e: ASL(c, addr_absolute_x(c));       break;
+  case 0x0a: ASL(c, am_acc);      break;
+  case 0x06: ASL(c, am_zer(c));        break;
+  case 0x16: ASL(c, am_zex(c));      break;
+  case 0x0e: ASL(c, am_abs(c));         break; 
+  case 0x1e: ASL(c, am_abx(c));       break;
     /* BIT */
-  case 0x24: BIT(c, addr_zero_page(c));        break;
-  case 0x2c: BIT(c, addr_absolute(c));         break;
+  case 0x24: BIT(c, am_zer(c));        break;
+  case 0x2c: BIT(c, am_abs(c));         break;
     /* branches */
-  case 0x10: BPL(c, addr_relative(c));         break;
-  case 0x30: BMI(c, addr_relative(c));         break;
-  case 0x50: BVC(c, addr_relative(c));         break;
-  case 0x70: BVS(c, addr_relative(c));         break;
-  case 0x90: BCC(c, addr_relative(c));         break;
-  case 0xb0: BCS(c, addr_relative(c));         break;
-  case 0xd0: BNE(c, addr_relative(c));         break;
-  case 0xf0: BEQ(c, addr_relative(c));         break;
+  case 0x10: BPL(c, am_rel(c));         break;
+  case 0x30: BMI(c, am_rel(c));         break;
+  case 0x50: BVC(c, am_rel(c));         break;
+  case 0x70: BVS(c, am_rel(c));         break;
+  case 0x90: BCC(c, am_rel(c));         break;
+  case 0xb0: BCS(c, am_rel(c));         break;
+  case 0xd0: BNE(c, am_rel(c));         break;
+  case 0xf0: BEQ(c, am_rel(c));         break;
     /* BRK */
   case 0x00: BRK(c); /* implied operand */     break;
     /* CMP */
-  case 0xc9: CMP(c, addr_immediate(c));        break;
-  case 0xc5: CMP(c, addr_zero_page(c));        break;
-  case 0xd5: CMP(c, addr_zero_page_x(c));      break;
-  case 0xcd: CMP(c, addr_absolute(c));         break; 
-  case 0xdd: CMP(c, addr_absolute_x(c));       break;
-  case 0xd9: CMP(c, addr_absolute_y(c));       break;
-  case 0xc1: CMP(c, addr_indexed_indirect(c)); break;
-  case 0xd1: CMP(c, addr_indirect_indexed(c)); break;
+  case 0xc9: CMP(c, am_imm(c));        break;
+  case 0xc5: CMP(c, am_zer(c));        break;
+  case 0xd5: CMP(c, am_zex(c));      break;
+  case 0xcd: CMP(c, am_abs(c));         break; 
+  case 0xdd: CMP(c, am_abx(c));       break;
+  case 0xd9: CMP(c, am_aby(c));       break;
+  case 0xc1: CMP(c, am_inx(c)); break;
+  case 0xd1: CMP(c, am_iny(c)); break;
     /* CPX */
-  case 0xe0: CPX(c, addr_immediate(c));        break;
-  case 0xe4: CPX(c, addr_zero_page(c));        break;
-  case 0xec: CPX(c, addr_absolute(c));         break;
+  case 0xe0: CPX(c, am_imm(c));        break;
+  case 0xe4: CPX(c, am_zer(c));        break;
+  case 0xec: CPX(c, am_abs(c));         break;
     /* CPY */
-  case 0xc0: CPY(c, addr_immediate(c));        break;
-  case 0xc4: CPY(c, addr_zero_page(c));        break;
-  case 0xcc: CPY(c, addr_absolute(c));         break;
+  case 0xc0: CPY(c, am_imm(c));        break;
+  case 0xc4: CPY(c, am_zer(c));        break;
+  case 0xcc: CPY(c, am_abs(c));         break;
     /* DEC */
-  case 0xc6: DEC(c, addr_zero_page(c));        break;
-  case 0xd6: DEC(c, addr_zero_page_x(c));      break;
-  case 0xce: DEC(c, addr_absolute(c));         break;
-  case 0xde: DEC(c, addr_absolute_x(c));       break;
+  case 0xc6: DEC(c, am_zer(c));        break;
+  case 0xd6: DEC(c, am_zex(c));      break;
+  case 0xce: DEC(c, am_abs(c));         break;
+  case 0xde: DEC(c, am_abx(c));       break;
     /* EOR */
-  case 0x49: EOR(c, addr_immediate(c));        break;
-  case 0x45: EOR(c, addr_zero_page(c));        break;
-  case 0x55: EOR(c, addr_zero_page_x(c));      break;
-  case 0x4d: EOR(c, addr_absolute(c));         break; 
-  case 0x5d: EOR(c, addr_absolute_x(c));       break;
-  case 0x59: EOR(c, addr_absolute_y(c));       break;
-  case 0x41: EOR(c, addr_indexed_indirect(c)); break;
-  case 0x51: EOR(c, addr_indirect_indexed(c)); break;
+  case 0x49: EOR(c, am_imm(c));        break;
+  case 0x45: EOR(c, am_zer(c));        break;
+  case 0x55: EOR(c, am_zex(c));      break;
+  case 0x4d: EOR(c, am_abs(c));         break; 
+  case 0x5d: EOR(c, am_abx(c));       break;
+  case 0x59: EOR(c, am_aby(c));       break;
+  case 0x41: EOR(c, am_inx(c)); break;
+  case 0x51: EOR(c, am_iny(c)); break;
     /* status flag operations */
   case 0x18: CLC(c); /* implied operand */     break;
   case 0x38: SEC(c); /* implied operand */     break;
@@ -824,42 +807,42 @@ int cpu_step (cpu *c) {
   case 0xd8: CLD(c); /* implied operand */     break;
   case 0xf8: SED(c); /* implied operand */     break;
     /* INC */
-  case 0xe6: INC(c, addr_zero_page(c));        break;
-  case 0xf6: INC(c, addr_zero_page_x(c));      break;
-  case 0xee: INC(c, addr_absolute(c));         break;
-  case 0xfe: INC(c, addr_absolute_x(c));       break;
+  case 0xe6: INC(c, am_zer(c));        break;
+  case 0xf6: INC(c, am_zex(c));      break;
+  case 0xee: INC(c, am_abs(c));         break;
+  case 0xfe: INC(c, am_abx(c));       break;
     /* JMP */
-  case 0x4c: JMP(c, addr_absolute(c));         break;
-  case 0x6c: JMP(c, addr_indirect(c));         break;
+  case 0x4c: JMP(c, am_abs(c));         break;
+  case 0x6c: JMP(c, am_ind(c));         break;
     /* JSR */
-  case 0x20: JSR(c, addr_absolute(c));         break;
+  case 0x20: JSR(c, am_abs(c));         break;
     /* LDA */
-  case 0xa9: LDA(c, addr_immediate(c));        break;
-  case 0xa5: LDA(c, addr_zero_page(c));        break;
-  case 0xb5: LDA(c, addr_zero_page_x(c));      break;
-  case 0xad: LDA(c, addr_absolute(c));         break; 
-  case 0xbd: LDA(c, addr_absolute_x(c));       break;
-  case 0xb9: LDA(c, addr_absolute_y(c));       break;
-  case 0xa1: LDA(c, addr_indexed_indirect(c)); break;
-  case 0xb1: LDA(c, addr_indirect_indexed(c)); break;
+  case 0xa9: LDA(c, am_imm(c));        break;
+  case 0xa5: LDA(c, am_zer(c));        break;
+  case 0xb5: LDA(c, am_zex(c));      break;
+  case 0xad: LDA(c, am_abs(c));         break; 
+  case 0xbd: LDA(c, am_abx(c));       break;
+  case 0xb9: LDA(c, am_aby(c));       break;
+  case 0xa1: LDA(c, am_inx(c)); break;
+  case 0xb1: LDA(c, am_iny(c)); break;
     /* LDX */
-  case 0xa2: LDX(c, addr_immediate(c));        break;
-  case 0xa6: LDX(c, addr_zero_page(c));        break;
-  case 0xb6: LDX(c, addr_zero_page_y(c));      break;
-  case 0xae: LDX(c, addr_absolute(c));         break;
-  case 0xbe: LDX(c, addr_absolute_y(c));       break;
+  case 0xa2: LDX(c, am_imm(c));        break;
+  case 0xa6: LDX(c, am_zer(c));        break;
+  case 0xb6: LDX(c, am_zey(c));      break;
+  case 0xae: LDX(c, am_abs(c));         break;
+  case 0xbe: LDX(c, am_aby(c));       break;
     /* LDY */
-  case 0xa0: LDY(c, addr_immediate(c));        break;
-  case 0xa4: LDY(c, addr_zero_page(c));        break;
-  case 0xb4: LDY(c, addr_zero_page_x(c));      break;
-  case 0xac: LDY(c, addr_absolute(c));         break;
-  case 0xbc: LDY(c, addr_absolute_x(c));       break;
+  case 0xa0: LDY(c, am_imm(c));        break;
+  case 0xa4: LDY(c, am_zer(c));        break;
+  case 0xb4: LDY(c, am_zex(c));      break;
+  case 0xac: LDY(c, am_abs(c));         break;
+  case 0xbc: LDY(c, am_abx(c));       break;
     /* LSR */
-  case 0x4a: LSR(c, addr_accumulator(c));      break;
-  case 0x46: LSR(c, addr_zero_page(c));        break;
-  case 0x56: LSR(c, addr_zero_page_x(c));      break;
-  case 0x4e: LSR(c, addr_absolute(c));         break;
-  case 0x5e: LSR(c, addr_absolute_x(c));       break;
+  case 0x4a: LSR(c, am_acc);      break;
+  case 0x46: LSR(c, am_zer(c));        break;
+  case 0x56: LSR(c, am_zex(c));      break;
+  case 0x4e: LSR(c, am_abs(c));         break;
+  case 0x5e: LSR(c, am_abx(c));       break;
     /* NOP and it's extra illegal codes */
   case 0x1a:
   case 0x3a:
@@ -869,14 +852,14 @@ int cpu_step (cpu *c) {
   case 0xfa:
   case 0xea: NOP(c); /* implied operand */     break;
     /* ORA */
-  case 0x09: ORA(c, addr_immediate(c));        break;
-  case 0x05: ORA(c, addr_zero_page(c));        break;
-  case 0x15: ORA(c, addr_zero_page_x(c));      break;
-  case 0x0d: ORA(c, addr_absolute(c));         break; 
-  case 0x1d: ORA(c, addr_absolute_x(c));       break;
-  case 0x19: ORA(c, addr_absolute_y(c));       break;
-  case 0x01: ORA(c, addr_indexed_indirect(c)); break;
-  case 0x11: ORA(c, addr_indirect_indexed(c)); break;
+  case 0x09: ORA(c, am_imm(c));        break;
+  case 0x05: ORA(c, am_zer(c));        break;
+  case 0x15: ORA(c, am_zex(c));      break;
+  case 0x0d: ORA(c, am_abs(c));         break; 
+  case 0x1d: ORA(c, am_abx(c));       break;
+  case 0x19: ORA(c, am_aby(c));       break;
+  case 0x01: ORA(c, am_inx(c)); break;
+  case 0x11: ORA(c, am_iny(c)); break;
     /* register instructions */
   case 0xaa: TAX(c); /* implied operand */     break;
   case 0x8a: TXA(c); /* implied operand */     break;
@@ -887,38 +870,38 @@ int cpu_step (cpu *c) {
   case 0x88: DEY(c); /* implied operand */     break;
   case 0xc8: INY(c); /* implied operand */     break;
     /* ROL */
-  case 0x2a: ROL(c, addr_accumulator(c));      break;
-  case 0x26: ROL(c, addr_zero_page(c));        break;
-  case 0x36: ROL(c, addr_zero_page_x(c));      break;
-  case 0x2e: ROL(c, addr_absolute(c));         break;
-  case 0x3e: ROL(c, addr_absolute_x(c));       break;
+  case 0x2a: ROL(c, am_acc);      break;
+  case 0x26: ROL(c, am_zer(c));        break;
+  case 0x36: ROL(c, am_zex(c));      break;
+  case 0x2e: ROL(c, am_abs(c));         break;
+  case 0x3e: ROL(c, am_abx(c));       break;
     /* ROR */
-  case 0x6a: ROR(c, addr_accumulator(c));      break;
-  case 0x66: ROR(c, addr_zero_page(c));        break;
-  case 0x76: ROR(c, addr_zero_page_x(c));      break;
-  case 0x6e: ROR(c, addr_absolute(c));         break;
-  case 0x7e: ROR(c, addr_absolute_x(c));       break;
+  case 0x6a: ROR(c, am_acc);      break;
+  case 0x66: ROR(c, am_zer(c));        break;
+  case 0x76: ROR(c, am_zex(c));      break;
+  case 0x6e: ROR(c, am_abs(c));         break;
+  case 0x7e: ROR(c, am_abx(c));       break;
     /* RTI */
   case 0x40: RTI(c); /* implied operand */     break;
     /* RTS */
   case 0x60: RTS(c); /* implied operand */     break;
     /* SBC */
-  case 0xe9: SBC(c, addr_immediate(c));        break;
-  case 0xe5: SBC(c, addr_zero_page(c));        break;
-  case 0xf5: SBC(c, addr_zero_page_x(c));      break;
-  case 0xed: SBC(c, addr_absolute(c));         break; 
-  case 0xfd: SBC(c, addr_absolute_x(c));       break;
-  case 0xf9: SBC(c, addr_absolute_y(c));       break;
-  case 0xe1: SBC(c, addr_indexed_indirect(c)); break;
-  case 0xf1: SBC(c, addr_indirect_indexed(c)); break;
+  case 0xe9: SBC(c, am_imm(c));        break;
+  case 0xe5: SBC(c, am_zer(c));        break;
+  case 0xf5: SBC(c, am_zex(c));      break;
+  case 0xed: SBC(c, am_abs(c));         break; 
+  case 0xfd: SBC(c, am_abx(c));       break;
+  case 0xf9: SBC(c, am_aby(c));       break;
+  case 0xe1: SBC(c, am_inx(c)); break;
+  case 0xf1: SBC(c, am_iny(c)); break;
     /* STA */
-  case 0x85: STA(c, addr_zero_page(c));        break;
-  case 0x95: STA(c, addr_zero_page_x(c));      break;
-  case 0x8d: STA(c, addr_absolute(c));         break; 
-  case 0x9d: STA(c, addr_absolute_x(c));       break;
-  case 0x99: STA(c, addr_absolute_y(c));       break;
-  case 0x81: STA(c, addr_indexed_indirect(c)); break;
-  case 0x91: STA(c, addr_indirect_indexed(c)); break;
+  case 0x85: STA(c, am_zer(c));        break;
+  case 0x95: STA(c, am_zex(c));      break;
+  case 0x8d: STA(c, am_abs(c));         break; 
+  case 0x9d: STA(c, am_abx(c));       break;
+  case 0x99: STA(c, am_aby(c));       break;
+  case 0x81: STA(c, am_inx(c)); break;
+  case 0x91: STA(c, am_iny(c)); break;
     /* stack instructions */
   case 0x9a: TXS(c); /* implied operand */     break;
   case 0xba: TSX(c); /* implied operand */     break;
@@ -927,13 +910,13 @@ int cpu_step (cpu *c) {
   case 0x08: PHP(c); /* implied operand */     break;
   case 0x28: PLP(c); /* implied operand */     break;
     /* STX */
-  case 0x86: STX(c, addr_zero_page(c));        break;
-  case 0x96: STX(c, addr_zero_page_y(c));      break;
-  case 0x8e: STX(c, addr_absolute(c));         break;
+  case 0x86: STX(c, am_zer(c));        break;
+  case 0x96: STX(c, am_zey(c));      break;
+  case 0x8e: STX(c, am_abs(c));         break;
     /* STY */
-  case 0x84: STY(c, addr_zero_page(c));        break;
-  case 0x94: STY(c, addr_zero_page_x(c));      break;
-  case 0x8c: STY(c, addr_absolute(c));         break;
+  case 0x84: STY(c, am_zer(c));        break;
+  case 0x94: STY(c, am_zex(c));      break;
+  case 0x8c: STY(c, am_abs(c));         break;
     /* illegal opcodes go to SKB skip byte / SKW skip word */
   case 0x80:
   case 0x82:
