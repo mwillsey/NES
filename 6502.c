@@ -551,7 +551,9 @@ void ROR (cpu *c, addr a) {
 
 /* jump to another location */
 void JMP (cpu *c, addr a) {
-  c->PC = mem_read(c->mem, a);
+  byte b = mem_read(c->mem, a);
+  printf("jumping to %04x\n", b);
+  c->PC = b;
 }
 
 /* jump to subroutine */
@@ -717,6 +719,10 @@ void cpu_init (cpu *c, memory *mem) {
   set_flag(c, 5, 1);
   /* set stack pointer */
   c->SP = 0xfd;
+  /* clear registers */
+  c->A = 0;
+  c->X = 0;
+  c->Y = 0;
   /* load program counter to address at 0xfffc/d*/
   c->PC = ((addr)(mem_read(c->mem, 0xfffd)) << 8) | mem_read(c->mem, 0xfffc);
 }
