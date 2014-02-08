@@ -4,23 +4,15 @@
  * a basic, clean 6502 cpu emulator 
  */
 
-#include <stdint.h>
 #include <stdio.h>
+#incluce "memory.h"
 
 /* 
  * ---------- type and struct definitions ---------- 
  */
 
-/* 6502 is an 8 bit processor */
-typedef uint8_t  byte;
-
-/* word in this context is not the word size (8 bit), 
- * but refers to a 2 byte quanitity */
-typedef uint16_t word;
 
 typedef struct { 
-  /* 6502 has 64 KB memory */
-  byte mem[0x10000];            
 
   /* pointers into special locations in memory */
   byte *cartidge_upper_bank;
