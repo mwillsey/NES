@@ -4,7 +4,7 @@
  * a basic, clean 6502 cpu emulator 
  */
 
-#include "cpu.h"
+#include "nes.h"
 
 /* 
  * ---------- stack functions ----------
@@ -727,8 +727,10 @@ void RTI (cpu *c) {
  */
 
 /* initializes a cpu */
-void cpu_init (cpu *c) {
+void cpu_init (nes *n) {
+  cpu *c = n->c;
   /* initialize memory */
+  c->mem = malloc(sizeof(memory));
   mem_init(c->mem, 0x10000);
   /* only these flags are guaranteed at startup */
   set_flag(c, I, 1);
@@ -743,11 +745,14 @@ void cpu_init (cpu *c) {
   c->Y = 0;
   /* load program counter to address at 0xfffc/d*/
   c->PC = ((addr)(mem_read(c->mem, 0xfffd)) << 8) | mem_read(c->mem, 0xfffc);
+  /* just for nestest */
+  c->PC = 0xc000;
 }
 
 /* returns 0 on successful execution of a single instruction */
-int cpu_step (cpu *c) {
+void cpu_step (nes *n) {
   byte op;
+  cpu *c = n->c;
 
   op = mem_read(c->mem, c->PC);
 
@@ -972,14 +977,9 @@ int cpu_step (cpu *c) {
   default: 
     /* invalid op, returning it so we can solve it or crash */
     printf("Invalid opcode: 0x%02x\n", op);
-    return 1;
   }
-
-  /* return 0 to indicate success, 0 would never be returned in success
-   * because we know 0x00 is a valid operation (BRK) */
-  return 0;
 }
 
-void cpu_destroy (cpu *c) {
-  free(c->mem);
+void cpu_destroy (nes *n) {
+  free(n->c->mem);
 }

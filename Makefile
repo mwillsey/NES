@@ -1,22 +1,28 @@
 CC = gcc
 CFLAGS = -Wall -g
 
-all: nes
+all: emu
 
-memory.o: memory.c memory.h
+memory.o: memory.c nes.h
 	$(CC) $(CFLAGS) -c memory.c
 
-cpu.o: cpu.c cpu.h
+cpu.o: cpu.c nes.h
 	$(CC) $(CFLAGS) -c cpu.c
 
-nes.o: nes.c
+ppu.o: ppu.c nes.h
+	$(CC) $(CFLAGS) -c ppu.c
+
+nes.o: nes.c nes.h
 	$(CC) $(CFLAGS) -c nes.c
 
-nes: nes.o cpu.o memory.o
+emu.o: emu.c
+	$(CC) $(CFLAGS) -c emu.c
+
+emu: emu.o nes.o cpu.o ppu.o memory.o
 
 clean: 
 	rm *.o
 
 test: all
-	./nes nestest.nes > my.log
+	./emu nestest.nes > my.log
 	python check.py

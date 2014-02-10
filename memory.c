@@ -4,7 +4,7 @@
  * A way to emulate a memory bank with mirroring 
  */
 
-#include "memory.h"
+#include "nes.h"
 
 void mem_init (memory *mem, int size) {
   int a; //need a to be int so it will go over 0xffff
