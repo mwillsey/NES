@@ -33,8 +33,9 @@ int main (int argc, char** argv) {
   /*   fread(nes_cpu.cartidge_lower_bank, sizeof(byte), in_stat.st_size, in); */
 
   /* for the nestest rom */
-  fread(mem.arr+0xc000-16, sizeof(byte), 0x4000, in);
+  fread(mem.ram+0xc000-16, sizeof(byte), 0x4000, in);
   nes_cpu.PC = 0xc000;
+
 
   int i;
   for(i = 0; i < 10000; i++) {

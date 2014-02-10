@@ -81,12 +81,9 @@ void set_zn_flags (cpu *c, byte b) {
  * handle incrementing the PC according to the number of arguments */
 
 /* accumulator
- * this addressing mode is an expection in that the operation works on a
- * register as opposed to on memory. Operations that this applies to need
- * to be aware of this, so we'll simply send -1.
+ * a few operations can work on the accumulator or memory, those have bee
+ * split into 2 separate functions, where the accumulator take 1 less arg.
  */
-
-static const addr am_acc = -1;
 
 /* immediate
  * the constant immediately follows in instruction in memory 
@@ -102,7 +99,7 @@ addr am_imm (cpu *c) {
  * bytes of memory can be addressed (0x0000 - 0x00FF)
  */
 addr am_zer (cpu *c) { 
-  return (addr)mem_read(c->mem, c->PC++);
+  return mem_read(c->mem, c->PC++);
 }
 
 /* zero page,x
@@ -110,7 +107,7 @@ addr am_zer (cpu *c) {
  * summed with the X register
  */
 addr am_zex (cpu *c) {
-  return (addr)(mem_read(c->mem, c->PC++) + c->X);
+  return (byte)(mem_read(c->mem, c->PC++) + c->X);
 }
 
 /* zero page,y
@@ -118,7 +115,7 @@ addr am_zex (cpu *c) {
  * summed with the X register
  */
 addr am_zey (cpu *c) {
-  return (addr)(mem_read(c->mem, c->PC++) + c->Y);
+  return (byte)(mem_read(c->mem, c->PC++) + c->Y);
 }
 
 /* relative
@@ -473,7 +470,7 @@ void INY (cpu *c) {
 
 /* decrement a memory location */
 void DEC (cpu *c, addr a) {
-  byte b = mem_read(c->mem, a) + 1;
+  byte b = mem_read(c->mem, a) - 1;
   mem_write(c->mem, a, b);
   set_zn_flags(c, b);
 }
@@ -494,13 +491,18 @@ void DEY (cpu *c) {
  * ----- shifts -----
  */
 
-/* these operations can work directly on the accumulator, which will
- * be indicated by an address of -1 */
+/* these operations can work directly on the accumulator, 
+ * and they will be split off into separate functions */
 
 /* arithmetic shift left */
+void ASLa (cpu *c) {
+  set_flag(c, C, c->A & 0x80);
+  c->A <<= 1;
+  set_zn_flags(c, c->A);
+}
+
 void ASL (cpu *c, addr a) {
   byte b = mem_read(c->mem, a);
-  /* set carry if we're shifting a bit out */
   set_flag(c, C, b & 0x80); 
   b <<= 1;
   mem_write(c->mem, a, b);
@@ -508,9 +510,14 @@ void ASL (cpu *c, addr a) {
 }
 
 /* logical shift right */
+void LSRa (cpu *c) {
+  set_flag(c, C, c->A & 0x1);
+  c->A >>= 1;
+  set_zn_flags(c, c->A);
+} 
+
 void LSR (cpu *c, addr a) {
   byte b = mem_read(c->mem, a);
-  /* set carry if we're shifting a bit out */
   set_flag(c, C, b & 0x1); 
   b >>= 1;
   mem_write(c->mem, a, b);
@@ -518,28 +525,41 @@ void LSR (cpu *c, addr a) {
 }
 
 /* rotate left */
+void ROLa (cpu *c) {
+  byte bit;
+  bit = (c->A >> 7 & 0x1);
+  c->A = (c->A << 1) | get_flag(c, C);
+  set_flag(c, C, bit);
+  set_zn_flags(c, c->A);
+} 
+
 void ROL (cpu *c, addr a) {
   byte bit, b;
   b = mem_read(c->mem, a);
-  /* save most significant bit to put in carry */
   bit = (b >> 7) & 0x1;
   b = (b << 1) | get_flag(c, C);
   mem_write(c->mem, a, b);
   set_flag(c, C, bit);
-  /* set zero and negative flags */
   set_zn_flags(c, b);
 }
 
+
 /* rotate right */
-void ROR (cpu *c, addr a) {
+void RORa (cpu *c) {
+  byte bit;
+  bit = c->A & 0x1;
+  c->A = (c->A >> 1) | (get_flag(c, C) << 7);
+  set_flag(c, C, bit);
+  set_zn_flags(c, c->A);
+} 
+
+void ROR (cpu *c, addr a) { 
   byte bit, b;
   b = mem_read(c->mem, a);
-  /* save most significant bit to put in carry */
   bit = b & 0x1;
   b = (b >> 1) | (get_flag(c, C) << 7);
   mem_write(c->mem, a, b);
   set_flag(c, C, bit);
-  /* set zero and negative flags */
   set_zn_flags(c, b);
 }
 
@@ -551,15 +571,13 @@ void ROR (cpu *c, addr a) {
 
 /* jump to another location */
 void JMP (cpu *c, addr a) {
-  byte b = mem_read(c->mem, a);
-  printf("jumping to %04x\n", b);
-  c->PC = b;
+  c->PC = a;
 }
 
 /* jump to subroutine */
 void JSR (cpu *c, addr a) {
   push_word(c, c->PC - 1);
-  c->PC = mem_read(c->mem, a);
+  c->PC = a;
 }
 
 /* return from subroutine */
@@ -759,7 +777,7 @@ int cpu_step (cpu *c) {
   case 0x21: AND(c, am_inx(c)); break;
   case 0x31: AND(c, am_iny(c)); break;
     /* ASL */
-  case 0x0a: ASL(c, am_acc);      break;
+  case 0x0a: ASLa(c);      break;
   case 0x06: ASL(c, am_zer(c));        break;
   case 0x16: ASL(c, am_zex(c));      break;
   case 0x0e: ASL(c, am_abs(c));         break; 
@@ -849,7 +867,7 @@ int cpu_step (cpu *c) {
   case 0xac: LDY(c, am_abs(c));         break;
   case 0xbc: LDY(c, am_abx(c));       break;
     /* LSR */
-  case 0x4a: LSR(c, am_acc);      break;
+  case 0x4a: LSRa(c);      break;
   case 0x46: LSR(c, am_zer(c));        break;
   case 0x56: LSR(c, am_zex(c));      break;
   case 0x4e: LSR(c, am_abs(c));         break;
@@ -881,13 +899,13 @@ int cpu_step (cpu *c) {
   case 0x88: DEY(c); /* implied operand */     break;
   case 0xc8: INY(c); /* implied operand */     break;
     /* ROL */
-  case 0x2a: ROL(c, am_acc);      break;
+  case 0x2a: ROLa(c);      break;
   case 0x26: ROL(c, am_zer(c));        break;
   case 0x36: ROL(c, am_zex(c));      break;
   case 0x2e: ROL(c, am_abs(c));         break;
   case 0x3e: ROL(c, am_abx(c));       break;
     /* ROR */
-  case 0x6a: ROR(c, am_acc);      break;
+  case 0x6a: RORa(c);      break;
   case 0x66: ROR(c, am_zer(c));        break;
   case 0x76: ROR(c, am_zex(c));      break;
   case 0x6e: ROR(c, am_abs(c));         break;
