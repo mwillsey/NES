@@ -13,8 +13,7 @@ typedef uint16_t addr;
 typedef struct {
   byte *ram;
   addr *mirrors;
-  byte (**read_cbs)(addr);
-  void (**write_cbs)(addr, byte);
+  void (**write_cbs)(byte);
 } memory;
 
 void mem_init (memory *mem, int size);
