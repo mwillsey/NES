@@ -1,10 +1,10 @@
 /* 
- * 6502.c
+ * cpu.c
  * by Max Willsey
  * a basic, clean 6502 cpu emulator 
  */
 
-#include "6502.h"
+#include "cpu.h"
 
 /* 
  * ---------- stack functions ----------

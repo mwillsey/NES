@@ -1,5 +1,5 @@
 /* 
- * 6502.h
+ * cpu.h
  * by Max Willsey
  * a basic, clean 6502 cpu emulator 
  */
