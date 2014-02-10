@@ -11,13 +11,24 @@
 typedef uint8_t  byte;
 typedef uint16_t addr;
 
+struct cpu_s;
+struct ppu_s;
+
 typedef struct {
+  struct cpu_s *c;
+  struct ppu_s *p;
+  /* special spaces in memory */
+  byte *upper_bank;
+} nes; 
+
+typedef struct {
+  nes *n;
   byte *ram;
   addr *mirrors;
-  void (**write_cbs)(byte);
+  void (**write_cbs)(nes*, byte);
 } memory;
 
-typedef struct { 
+struct cpu_s { 
   memory *mem;
   /* registers */
   byte A;              /* accumulator */
@@ -25,9 +36,9 @@ typedef struct {
   byte SP;             /* stack pointer */
   addr PC;             /* program counter, the only 16 bit register */
   byte P;              /* processor status register */
-} cpu;
+};
 
-typedef struct {
+struct ppu_s {
   memory *mem;
   /* registers */
   byte ctrl;
@@ -38,20 +49,14 @@ typedef struct {
   byte scroll;
   byte addr;
   byte data;
-} ppu;
+};
 
-typedef struct {
-  cpu *c;
-  ppu *p;
-  /* special spaces in memory */
-  byte *upper_bank;
-} nes; 
+typedef struct cpu_s cpu;
+typedef struct ppu_s ppu;
 
-void mem_init (memory *mem, int size);
-void mem_write (memory *mem, addr a, byte b);
-byte mem_read (memory *mem, addr a);
-void mem_destroy (memory *mem);
-void mem_mirror (memory *mem, addr start, addr end, int size);
+void nes_init(nes *n);
+void nes_step(nes *n);
+void nes_destroy(nes *n);
 
 void cpu_init (nes *n);
 void cpu_step (nes *n);
@@ -60,7 +65,8 @@ void cpu_destroy (nes *n);
 void ppu_init (nes *n);
 void ppu_destroy (nes *n);
 
-void nes_init(nes *n);
-void nes_step(nes *n);
-void nes_destroy(nes *n);
-
+void mem_init (memory *mem, int size, nes *n);
+void mem_write (memory *mem, addr a, byte b);
+byte mem_read (memory *mem, addr a);
+void mem_destroy (memory *mem);
+void mem_mirror (memory *mem, addr start, addr end, int size);

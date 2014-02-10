@@ -731,7 +731,7 @@ void cpu_init (nes *n) {
   cpu *c = n->c;
   /* initialize memory */
   c->mem = malloc(sizeof(memory));
-  mem_init(c->mem, 0x10000);
+  mem_init(c->mem, 0x10000, n);
   /* only these flags are guaranteed at startup */
   set_flag(c, I, 1);
   set_flag(c, D, 0);
