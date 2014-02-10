@@ -25,10 +25,13 @@ typedef struct {
 } cpu;
 
 /* initializes a cpu */
-void cpu_init (cpu *c, memory *mem);
+void cpu_init (cpu *c);
 
 /* returns 0 on successful execution of a single instruction */
 int cpu_step (cpu *c);
+
+/* frees the cpu memory */
+void cpu_destroy (cpu *c);
 
 
 

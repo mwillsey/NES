@@ -727,9 +727,9 @@ void RTI (cpu *c) {
  */
 
 /* initializes a cpu */
-void cpu_init (cpu *c, memory *mem) {
-  /* link to the memory */
-  c->mem = mem;
+void cpu_init (cpu *c) {
+  /* initialize memory */
+  mem_init(c->mem, 0x10000);
   /* only these flags are guaranteed at startup */
   set_flag(c, I, 1);
   set_flag(c, D, 0);
@@ -978,4 +978,8 @@ int cpu_step (cpu *c) {
   /* return 0 to indicate success, 0 would never be returned in success
    * because we know 0x00 is a valid operation (BRK) */
   return 0;
+}
+
+void cpu_destroy (cpu *c) {
+  free(c->mem);
 }

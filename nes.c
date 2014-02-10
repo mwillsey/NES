@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <sys/stat.h>
-#include "6502.h"
+#include "cpu.h"
 
 int main (int argc, char** argv) {
   FILE *in;
@@ -19,10 +19,7 @@ int main (int argc, char** argv) {
     return 1;
   }
 
-  /* init some memory */
-  mem_init(&mem, 0x10000);
-
-  cpu_init(&nes_cpu, &mem);
+  cpu_init(&nes_cpu);
 
   /* TODO: size checking */
   /* fstat(fileno(in), &in_stat); */
