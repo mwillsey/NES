@@ -24,8 +24,10 @@ typedef struct {
 typedef struct {
   nes *n;
   byte *ram;
-  addr *mirrors;
+  byte *mirrors;
+  /* eventually I'd like to clean up the callback structure */
   void (**write_cbs)(nes*, byte);
+  byte (**read_cbs) (nes*);
 } memory;
 
 struct cpu_s { 
@@ -46,8 +48,8 @@ struct ppu_s {
   byte status;
   byte oam_addr;
   byte oam_data;
-  byte scroll;
-  byte addr;
+  addr scroll;
+  addr addr;
   byte data;
 };
 

@@ -732,6 +732,10 @@ void cpu_init (nes *n) {
   /* initialize memory */
   c->mem = malloc(sizeof(memory));
   mem_init(c->mem, 0x10000, n);
+  /* set up memory mirrors */
+  mem_mirror(c->mem, 0x0000, 0x1fff, 0x0800);
+  mem_mirror(c->mem, 0x2000, 0x3fff, 0x0008);
+
   /* only these flags are guaranteed at startup */
   set_flag(c, I, 1);
   set_flag(c, D, 0);

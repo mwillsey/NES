@@ -11,6 +11,7 @@ void mem_init (memory *mem, int size, nes *n) {
   mem->ram = malloc(sizeof(byte) * size);
   mem->mirrors = malloc(sizeof(addr) * size);
   mem->write_cbs = malloc(sizeof(void*) * size);
+  mem->read_cbs = malloc(sizeof(void*) * size);
   
   for (a = 0; a < size; a++)
     mem->mirrors[a] = a;
@@ -27,6 +28,8 @@ void mem_write (memory *mem, addr a, byte b) {
 
 byte mem_read (memory *mem, addr a) {
   addr a1 = mem->mirrors[a];
+  if (mem->read_cbs[a1])
+    return (mem->read_cbs[a1])(mem->n);
   return mem->ram[a1];
 }
 
