@@ -52,7 +52,6 @@ struct ppu_s {
   byte scrollx;
   byte scrolly;
   addr addr;
-  byte data;
 };
 
 typedef struct cpu_s cpu;
