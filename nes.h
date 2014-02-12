@@ -43,12 +43,14 @@ struct cpu_s {
 struct ppu_s {
   memory *mem;
   /* registers */
+  byte latch;
   byte ctrl;
   byte mask;
   byte status;
   byte oam_addr;
   byte oam_data;
-  addr scroll;
+  byte scrollx;
+  byte scrolly;
   addr addr;
   byte data;
 };

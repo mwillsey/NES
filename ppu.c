@@ -26,12 +26,18 @@ void oam_data_cb (nes* n, byte b) {
   n->p->oam_data = b; 
 }  
 void scroll_cb (nes* n, byte b) {
-  /* addr is written byte by byte, lo then hi */
-  n->p->scroll = (n->p->scroll << 8) | b; 
+  if (n->p->latch)
+    n->p->scrolly = b;
+  else
+    n->p->scrollx = b;
+  
 }  
 void addr_cb (nes* n, byte b) {
-  /* addr is written byte by byte, lo then hi */
-  n->p->addr = (n->p->addr << 8) | b; 
+  /* clear then write to spot indicated by latch */
+  if (n->p->latch)
+    n->p->addr = (n->p->addr & 0xff00) | b;
+  else
+    n->p->addr = (n->p->addr & 0x00ff) | (b << 8);
 }  
 void data_cb (nes* n, byte b) {
   n->p->data = b; 
@@ -41,6 +47,7 @@ void ppu_init (nes *n) {
   ppu *p = n->p;
   p->mem = malloc(sizeof(memory));
   mem_init(p->mem, 0x4000, n);
+  p->latch = 0;
 
   /* install callbacks in CPU address space */
   n->c->mem->write_cbs[0x2000] = &ctrl_cb;
