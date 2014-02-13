@@ -52,6 +52,8 @@ struct ppu_s {
   byte scrollx;
   byte scrolly;
   addr addr;
+  /* for output */
+  byte frame_buffer[240][256];
 };
 
 typedef struct cpu_s cpu;
@@ -59,6 +61,7 @@ typedef struct ppu_s ppu;
 
 void nes_init(nes *n);
 void nes_step(nes *n);
+byte* nes_frame_buffer(nes *n);
 void nes_destroy(nes *n);
 
 void cpu_init (nes *n);

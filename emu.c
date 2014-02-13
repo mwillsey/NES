@@ -1,9 +1,11 @@
 #include "nes.h"
+#include "graphics.c"
 
 int main (int argc, char** argv) {
   FILE *in;
   //struct stat in_stat;
   nes n;
+  tv tv;
 
   if (argc != 2) {
     printf("Invalid number of arguments. Please supply just one ROM file.\n");
@@ -17,6 +19,10 @@ int main (int argc, char** argv) {
   }
 
   nes_init(&n);
+
+  tv_init(&tv, nes_frame_buffer(&n));
+
+  tv_update(&tv);
 
   
   /* TODO: size checking */
@@ -34,6 +40,10 @@ int main (int argc, char** argv) {
   for(i = 0; i < 10000; i++) {
     nes_step(&n);
   }
+
+  tv_update(&tv);
+
+  SDL_Delay(3000);
  
   return 0;
 }

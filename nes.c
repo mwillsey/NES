@@ -18,6 +18,10 @@ void nes_step (nes *n) {
   cpu_step(n);
 }
 
+byte *nes_frame_buffer(nes *n) {
+  return &n->p->frame_buffer;
+}
+
 void nes_destroy (nes *n) {
   cpu_destroy(n);
   ppu_destroy(n);
