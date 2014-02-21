@@ -18,13 +18,14 @@ typedef struct {
   struct cpu_s *c;
   struct ppu_s *p;
   /* special spaces in memory */
+  byte *lower_bank;
   byte *upper_bank;
 } nes; 
 
 typedef struct {
   nes *n;
   byte *ram;
-  byte *mirrors;
+  addr *mirrors;
   /* eventually I'd like to clean up the callback structure */
   void (**write_cbs)(nes*, byte);
   byte (**read_cbs) (nes*);
@@ -49,10 +50,10 @@ struct ppu_s {
   byte status;
   byte oam_addr;
   byte oam_data;
-  byte scrollx;
-  byte scrolly;
+  byte scrollx, scrolly;
   addr addr;
   /* for output */
+  byte current_i, current_j;
   byte frame_buffer[240][256];
 };
 
@@ -65,10 +66,12 @@ byte* nes_frame_buffer(nes *n);
 void nes_destroy(nes *n);
 
 void cpu_init (nes *n);
+void cpu_load (nes *n);
 void cpu_step (nes *n);
 void cpu_destroy (nes *n);
 
 void ppu_init (nes *n);
+void ppu_step (nes *n);
 void ppu_destroy (nes *n);
 
 void mem_init (memory *mem, int size, nes *n);

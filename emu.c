@@ -1,5 +1,5 @@
 #include "nes.h"
-#include "graphics.c"
+#include "graphics.h"
 
 int main (int argc, char** argv) {
   FILE *in;
@@ -22,8 +22,6 @@ int main (int argc, char** argv) {
 
   tv_init(&tv, nes_frame_buffer(&n));
 
-  tv_update(&tv);
-
   
   /* TODO: size checking */
   /* fstat(fileno(in), &in_stat); */
@@ -34,16 +32,23 @@ int main (int argc, char** argv) {
   /*   fread(nes_cpu.cartidge_lower_bank, sizeof(byte), in_stat.st_size, in); */
 
   /* for the nestest rom */
-  fread(n.upper_bank-16, sizeof(byte), 0x4000, in);
+  fread(n.upper_bank, sizeof(byte), 0x4000, in);
+  cpu_load(&n);
 
   int i;
-  for(i = 0; i < 10000; i++) {
+  for(i = 0; i < 100; i++) {
     nes_step(&n);
+    //tv_update(&tv);
   }
+
+  printf("drawing to screen now");
+
+  for(i = 0; i < 256*240; i++)
+    ppu_draw_pixel(&n);
 
   tv_update(&tv);
 
-  SDL_Delay(3000);
+  SDL_Delay(2000);
  
   return 0;
 }

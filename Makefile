@@ -15,14 +15,14 @@ ppu.o: ppu.c nes.h
 nes.o: nes.c nes.h
 	$(CC) $(CFLAGS) -c nes.c
 
-graphics.o: graphics.c nes.h
+graphics.o: graphics.c graphics.h
 	$(CC) $(CFLAGS) -c graphics.c
 
-emu.o: emu.c graphics.c
+emu.o: emu.c graphics.h
 	$(CC) $(CFLAGS) -c emu.c
 
-emu: emu.o nes.o cpu.o ppu.o memory.o 
-	$(CC) -lSDL2 -o emu emu.o nes.o cpu.o ppu.o memory.o
+emu: emu.o nes.o cpu.o ppu.o memory.o graphics.o
+	$(CC) -lSDL2 -o emu emu.o nes.o cpu.o ppu.o memory.o graphics.o
 
 clean: 
 	rm *.o

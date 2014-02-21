@@ -83,13 +83,46 @@ void wcb_2007 (nes* n, byte b) {
     n->p->addr += 32;
   else
     n->p->addr += 1;    
-}  
+}
+
+void ppu_draw_pixel (nes* n) {
+  /* just draw name table 1 right now */
+  byte i,j, nt_entry, at_entry, pt_entry;
+  byte bit;
+  int inc;
+  i = n->p->current_i;
+  j = n->p->current_j;
+
+  nt_entry = mem_read (n->p->mem, 0x2000 + (i / 8)*32 + (j / 8));
+  at_entry = mem_read (n->p->mem, 0x23c0 + (i / 32)*8 + (j / 32)); 
+  // get patterns and draw that shit
+  pt_entry = mem_read (n->p->mem, 0x0000 + (nt_entry << 4) + i & 8 + 8);
+  bit = (pt_entry >> (j % 8)) & 1;
+
+  if (bit)
+    n->p->frame_buffer[i][j] = 0x0d;
+  else     
+    n->p->frame_buffer[i][j] = 0x30;
+
+  inc = ((int)i * 256 + j + 1) % (240 * 256);
+  //printf("i: %d, j: %d, inc: %d\n", i, j, inc);
+  n->p->current_i = inc / 256;
+  n->p->current_j = inc % 256;
+  
+}
+
+void ppu_step (nes *n) {
+  ppu_draw_pixel(n);
+}
 
 void ppu_init (nes *n) {
   ppu *p = n->p;
   p->mem = malloc(sizeof(memory));
   mem_init(p->mem, 0x4000, n);
   p->latch = 0;
+
+  p->current_i = 0;
+  p->current_j = 0;
 
   /* install write callbacks in CPU address space */
   n->c->mem->write_cbs[0x2000] = &wcb_2000;

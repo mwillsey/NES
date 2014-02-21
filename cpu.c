@@ -577,7 +577,7 @@ void JMP (cpu *c, addr a) {
 /* jump to subroutine */
 void JSR (cpu *c, addr a) {
   push_word(c, c->PC - 1);
-  c->PC = a;
+  c->PC = a; //IDK if this will pass nestest
 }
 
 /* return from subroutine */
@@ -696,6 +696,9 @@ void BRK (cpu *c) {
   /* load interrupt vector at 0xFFFE/F */
   lo = mem_read(c->mem, 0xfffe);
   hi = mem_read(c->mem, 0xffff);
+
+  printf("breaking to: %04x\n", *((addr*)(c->mem->ram + 0xfffe))); //((addr)(hi) << 8) | lo);
+
   c->PC = ((addr)(hi) << 8) | lo;
 }
 
@@ -742,16 +745,23 @@ void cpu_init (nes *n) {
   /* this isn't a flag, but it's always 1 */
   set_flag(c, 5, 1);
   /* set stack pointer */
-  c->SP = 0xfd;
+  c->SP = 0xff;
   /* clear registers */
   c->A = 0;
   c->X = 0;
   c->Y = 0;
+}
+
+void cpu_load (nes *n) {
+  cpu *c = n->c;
   /* load program counter to address at 0xfffc/d*/
   c->PC = ((addr)(mem_read(c->mem, 0xfffd)) << 8) | mem_read(c->mem, 0xfffc);
+  printf("Initial PC: 0x%04x\n", c->PC);
   /* just for nestest */
-  c->PC = 0xc000;
+  //c->PC = 0xc000;
 }
+
+  
 
 /* returns 0 on successful execution of a single instruction */
 void cpu_step (nes *n) {

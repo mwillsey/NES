@@ -11,15 +11,19 @@ void nes_init (nes *n) {
   n->p = malloc(sizeof(ppu));
   cpu_init(n);
   ppu_init(n);
-  n->upper_bank = n->c->mem->ram + 0xc000;
+  n->lower_bank = &n->c->mem->ram[0x8000];
+  n->upper_bank = &n->c->mem->ram[0xc000];
 }
 
-void nes_step (nes *n) {
+void nes_step (nes *n) {                        
+  int i;
   cpu_step(n);
+  /* for (i = 0; i < 20; i++) */
+  /*   ppu_draw_pixel(n); */
 }
 
 byte *nes_frame_buffer(nes *n) {
-  return &n->p->frame_buffer;
+  return (byte*) n->p->frame_buffer;
 }
 
 void nes_destroy (nes *n) {
