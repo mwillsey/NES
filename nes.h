@@ -7,9 +7,11 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 
 typedef uint8_t  byte;
 typedef uint16_t addr;
+typedef bool     bit;
 
 struct cpu_s;
 struct ppu_s;
@@ -43,8 +45,14 @@ struct cpu_s {
 
 struct ppu_s {
   memory *mem;
+
+  int cycle;                    /* 341 per scanline */
+  int scanline;                 /* 262 per frame */
+  bit even_frame;
+
+  bit first_write;
+  bit rendering;
   /* registers */
-  byte latch;
   byte ctrl;
   byte mask;
   byte status;

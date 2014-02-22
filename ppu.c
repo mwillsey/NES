@@ -22,7 +22,7 @@ void wcb_2001 (nes* n, byte b) {
 /* Status ($2002) < read */
 byte rcb_2002 (nes *n) {
   /* reset address latch */
-  n->p->latch = 0;
+  n->p->first_write = 1;
   return n->p->status;
 }
 
@@ -45,23 +45,23 @@ void wcb_2004 (nes* n, byte b) {
 /* Scroll ($2005) >> write x2 */
 void wcb_2005 (nes* n, byte b) {
   /* write into x/y depending on latch */
-  if (n->p->latch)
-    n->p->scrolly = b;
-  else
+  if (n->p->first_write)
     n->p->scrollx = b;
-  /* flip latch */
-  n->p->latch = !n->p->latch;
+  else
+    n->p->scrolly = b;
+  /* flip first_write */
+  n->p->first_write = !n->p->first_write;
 }  
 
 /* Address ($2006) >> write x2 */
 void wcb_2006 (nes* n, byte b) {
-  /* clear then write to spot indicated by latch */
-  if (n->p->latch)
-    n->p->addr = (n->p->addr & 0xff00) | b;
-  else
+  /* clear then write to spot indicated by first_write latch */
+  if (n->p->first_write)
     n->p->addr = (n->p->addr & 0x00ff) | (b << 8);
-  /* flip latch */
-  n->p->latch = !n->p->latch;
+  else
+    n->p->addr = (n->p->addr & 0xff00) | b;
+  /* flip first_write */
+  n->p->first_write = !n->p->first_write;
 }  
 
 /* Data ($2007) <> read/write */
@@ -111,15 +111,35 @@ void ppu_draw_pixel (nes* n) {
   
 }
 
+void ppu_cycle_inc (ppu *p) {
+  p->cycle++;
+  if (p->cycle > 341) {
+    p->cycle = 0;
+    p->scanline++;
+    if (p->scanline > 261) {
+      p->scanline = 0;
+      p->even_frame = !p->even_frame;
+    }
+  }
+}
+    
+
 void ppu_step (nes *n) {
-  ppu_draw_pixel(n);
+  ppu* p = n->p;
+
+  if (p->cycle == 0) {
+    /* this is an idle cycle */
+    ppu_cycle_inc(p);
+    return;
+  }
 }
 
 void ppu_init (nes *n) {
   ppu *p = n->p;
   p->mem = malloc(sizeof(memory));
   mem_init(p->mem, 0x4000, n);
-  p->latch = 0;
+
+  p->first_write = 1;
 
   p->current_i = 0;
   p->current_j = 0;
