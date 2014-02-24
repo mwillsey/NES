@@ -23,7 +23,11 @@ void wcb_2001 (nes* n, byte b) {
 byte rcb_2002 (nes *n) {
   /* reset address latch */
   n->p->first_write = 1;
-  return n->p->status;
+  /* reset vblank bit */
+  byte b = n->p->status;
+  printf("reading 2002: getting %02x\n", b);
+  n->p->status &= 0x7f;
+  return b;
 }
 
 /* OAM address ($2003) > write */
@@ -78,6 +82,7 @@ byte rcb_2007 (nes* n) {
 void wcb_2007 (nes* n, byte b) {
   /* write this to the address in VRAM */
   mem_write(n->p->mem, n->p->addr, b);
+  printf("writing to vram \n");
   /* increment ppuaddr based on A2 */
   if (n->p->ctrl & 0x05)
     n->p->addr += 32;
@@ -85,35 +90,9 @@ void wcb_2007 (nes* n, byte b) {
     n->p->addr += 1;    
 }
 
-void ppu_draw_pixel (nes* n) {
-  /* just draw name table 1 right now */
-  byte i,j, nt_entry, at_entry, pt_entry;
-  byte bit;
-  int inc;
-  i = n->p->current_i;
-  j = n->p->current_j;
-
-  nt_entry = mem_read (n->p->mem, 0x2000 + (i / 8)*32 + (j / 8));
-  at_entry = mem_read (n->p->mem, 0x23c0 + (i / 32)*8 + (j / 32)); 
-  // get patterns and draw that shit
-  pt_entry = mem_read (n->p->mem, 0x0000 + (nt_entry << 4) + i & 8 + 8);
-  bit = (pt_entry >> (j % 8)) & 1;
-
-  if (bit)
-    n->p->frame_buffer[i][j] = 0x0d;
-  else     
-    n->p->frame_buffer[i][j] = 0x30;
-
-  inc = ((int)i * 256 + j + 1) % (240 * 256);
-  //printf("i: %d, j: %d, inc: %d\n", i, j, inc);
-  n->p->current_i = inc / 256;
-  n->p->current_j = inc % 256;
-  
-}
-
 void ppu_cycle_inc (ppu *p) {
   p->cycle++;
-  if (p->cycle > 341) {
+  if (p->cycle > 340) {
     p->cycle = 0;
     p->scanline++;
     if (p->scanline > 261) {
@@ -122,27 +101,139 @@ void ppu_cycle_inc (ppu *p) {
     }
   }
 }
-    
+
+void ppu_read_nt (ppu *p) {
+  addr nt_base_addr = 0x2000 + 0x400 * (p->ctrl & 0x4);
+  addr nt_offset = (p->scanline / 8)*32 + ((p->cycle + 16) / 8);
+  p->nt_entry =  mem_read(p->mem, nt_base_addr + nt_offset);
+}
+
+void ppu_read_at (ppu *p) {
+  addr at_base_addr = 0x2c30 + 0x400 * (p->ctrl & 0x4);
+  addr at_offset = (p->scanline / 32)*8 + ((p->cycle + 16) / 32);
+  p->at_latch =  mem_read(p->mem, at_base_addr + at_offset);
+}
+
+void ppu_read_pt (ppu *p, bit hi) {
+  addr pt_base_addr = ((p->ctrl >> 4) & 1) ? 0x1000 : 0x0000;
+  addr pt_offset = ((addr)p->nt_entry << 4) + (p->scanline & 8);
+  if (hi) 
+    p->pt_latch_hi = mem_read(p->mem, pt_base_addr + pt_offset + 8);
+  else 
+    p->pt_latch_lo = mem_read(p->mem, pt_base_addr + pt_offset);
+}
+
 
 void ppu_step (nes *n) {
   ppu* p = n->p;
+  addr bg_palette;
+  byte pix;
+  int i;
+
+  //printf("cycle: %d, scanline: %d\n",p->cycle, p->scanline);
+
+  if (240 <= p->scanline && p->scanline <= 260) {
+    printf("cycle: %d, scanline: %d\n",p->cycle, p->scanline);
+    if (p->scanline == 241 && p->cycle == 0) {
+      printf("starting vblank");
+      p->status |= 0x80;
+    }
+    ppu_cycle_inc(p);
+    return;
+  }
+
+  /* else in rendering scanline */
 
   if (p->cycle == 0) {
     /* this is an idle cycle */
     ppu_cycle_inc(p);
     return;
   }
+
+  if (p->cycle <= 256) {
+
+    i = p->cycle % 8;
+
+    bg_palette = 0x3f01 + 3 * (p->at_latch >> ((p->cycle % 32 / 8) * 2));
+    pix = ((p->pt_shift_hi >> i) << 1) | (p->pt_shift_lo >> i);
+    pix = pix ? mem_read(p->mem, bg_palette + pix) : mem_read(p->mem, 0x3f00);
+    p->frame_buffer[p->scanline][p->cycle] = pix;
+
+    switch (p->cycle % 8) {
+    case 1:
+      ppu_read_nt(p);
+      break;
+    case 3:
+      ppu_read_at(p);
+      break;
+    case 5:
+      ppu_read_pt(p, 0);
+      break;
+    case 7:
+      ppu_read_pt(p, 1);
+      /* shift and load from latches*/
+      p->at_shift = (p->at_shift >> 8) | ((addr)(p->at_latch << 8));
+      p->pt_shift_lo = (p->pt_shift_lo >> 8) | ((addr)(p->pt_latch_lo << 8));
+      p->pt_shift_hi = (p->pt_shift_hi >> 8) | ((addr)(p->pt_latch_hi << 8));
+      break;
+    }
+
+    ppu_cycle_inc(p);
+    return;
+  }
+
+  if(p->cycle <= 320) {
+    /* fetch sprites for next scanline */
+    ppu_cycle_inc(p);
+    return;
+  }
+
+  if(p->cycle <= 336) {
+    /* load the shift registers for next scanline */
+    switch (p->cycle % 8) {
+    case 1:
+      ppu_read_nt(p);
+      break;
+    case 3:
+      ppu_read_at(p);
+      break;
+    case 5:
+      ppu_read_pt(p, 0);
+      break;
+    case 7:
+      ppu_read_pt(p, 1);
+      /* shift and load from latches*/
+      p->at_shift = (p->at_shift >> 8) | ((addr)(p->at_latch << 8));
+      p->pt_shift_lo = (p->pt_shift_lo >> 8) | ((addr)(p->pt_latch_lo << 8));
+      p->pt_shift_hi = (p->pt_shift_hi >> 8) | ((addr)(p->pt_latch_hi << 8));
+      break;
+    }
+
+    if (p->scanline == 261) {     /* leaving vblank */
+      p->status &= 0x7f;
+      printf("leaving vblank");
+    }
+
+    ppu_cycle_inc(p);
+    return;
+  }
+
+  /* else */
+  ppu_cycle_inc(p);
+  return;
 }
 
 void ppu_init (nes *n) {
   ppu *p = n->p;
   p->mem = malloc(sizeof(memory));
   mem_init(p->mem, 0x4000, n);
+  p->scanline = 0;
+  p->cycle = 0;
 
   p->first_write = 1;
 
-  p->current_i = 0;
-  p->current_j = 0;
+  /* we want NMIs */
+  /* p->ctrl |= 0x80; */
 
   /* install write callbacks in CPU address space */
   n->c->mem->write_cbs[0x2000] = &wcb_2000;

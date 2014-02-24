@@ -32,23 +32,25 @@ int main (int argc, char** argv) {
   /*   fread(nes_cpu.cartidge_lower_bank, sizeof(byte), in_stat.st_size, in); */
 
   /* for the nestest rom */
+  fseek(in, 16, SEEK_SET);
   fread(n.upper_bank, sizeof(byte), 0x4000, in);
+  fread(n.chr_rom, sizeof(byte), 0x2000, in);
   cpu_load(&n);
 
-  int i;
-  for(i = 0; i < 100; i++) {
+  int i = 0;
+
+  SDL_Event e;
+
+  while (1) {
+    i++;
     nes_step(&n);
-    //tv_update(&tv);
+    if (i % 100 == 0) {
+      SDL_PollEvent(&e);
+      if (e.type == SDL_QUIT)
+        break;
+      tv_update(&tv);
+    }
   }
 
-  printf("drawing to screen now");
-
-  for(i = 0; i < 256*240; i++)
-    ppu_draw_pixel(&n);
-
-  tv_update(&tv);
-
-  SDL_Delay(2000);
- 
   return 0;
 }

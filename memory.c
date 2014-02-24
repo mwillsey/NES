@@ -8,7 +8,7 @@
 
 void mem_init (memory *mem, int size, nes *n) {
   int a; //need a to be int so it will go over 0xffff
-  mem->ram = malloc(sizeof(byte) * size);
+  mem->ram = calloc(sizeof(byte), size); /* cleared to 0 */
   mem->mirrors = malloc(sizeof(addr) * size);
   mem->write_cbs = calloc(sizeof(void*) , size);
   mem->read_cbs = calloc(sizeof(void*) , size);
@@ -41,7 +41,7 @@ void mem_destroy (memory *mem) {
 void mem_mirror (memory *mem, addr start, addr end, int size) {
   addr a;
   for (a = start; a <= end; a++) {
-    mem->mirrors[a] = a % size;
+    mem->mirrors[a] = start + a % size;
   }
 }
     

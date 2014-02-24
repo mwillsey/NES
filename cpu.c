@@ -688,11 +688,9 @@ void SEI (cpu *c) {
 void BRK (cpu *c) {
   byte lo, hi;
   /* push PC then P onto the stack */
-  /* bit 4 is always set when pushed to the stack */
+  /* bits 4,5 is always set when pushed to the stack from BRK */
   push_word(c, c->PC);
-  push_byte(c, c->P | 0x10);
-  /* set break flag */
-  set_flag(c, B, 1);
+  push_byte(c, c->P | 0x30);
   /* load interrupt vector at 0xFFFE/F */
   lo = mem_read(c->mem, 0xfffe);
   hi = mem_read(c->mem, 0xffff);
@@ -745,7 +743,7 @@ void cpu_init (nes *n) {
   /* this isn't a flag, but it's always 1 */
   set_flag(c, 5, 1);
   /* set stack pointer */
-  c->SP = 0xff;
+  c->SP = 0xfd;
   /* clear registers */
   c->A = 0;
   c->X = 0;
@@ -756,17 +754,37 @@ void cpu_load (nes *n) {
   cpu *c = n->c;
   /* load program counter to address at 0xfffc/d*/
   c->PC = ((addr)(mem_read(c->mem, 0xfffd)) << 8) | mem_read(c->mem, 0xfffc);
-  printf("Initial PC: 0x%04x\n", c->PC);
+  //printf("Initial PC: 0x%04x\n", c->PC);
   /* just for nestest */
-  //c->PC = 0xc000;
+  /* c->PC = 0xc000; */
 }
 
-  
+void NMI (cpu *c) {
+  byte lo, hi;
+  /* push PC then P onto the stack */
+  /* bit 5 is always set when pushed to the stack */
+  push_word(c, c->PC);
+  push_byte(c, c->P | 0x20);
+  /* load interrupt vector at 0xFFFA/B */
+  lo = mem_read(c->mem, 0xfffa);
+  hi = mem_read(c->mem, 0xfffb);
+
+  printf("NMI occured to 0x%04x\n",((addr)(hi) << 8) | lo );
+
+  c->PC = ((addr)(hi) << 8) | lo;
+}
+
 
 /* returns 0 on successful execution of a single instruction */
 void cpu_step (nes *n) {
   byte op;
   cpu *c = n->c;
+
+  //printf("status: %02x, ctrl: %02x\n", n->p->status, n->p->ctrl);
+  if (n->p->status & n->p->ctrl & 0x80) {
+    NMI(c);
+    return;
+  }
 
   op = mem_read(c->mem, c->PC);
 

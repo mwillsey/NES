@@ -22,6 +22,7 @@ typedef struct {
   /* special spaces in memory */
   byte *lower_bank;
   byte *upper_bank;
+  byte *chr_rom;
 } nes; 
 
 typedef struct {
@@ -52,6 +53,22 @@ struct ppu_s {
 
   bit first_write;
   bit rendering;
+
+
+  /*** background stuff ***/
+
+  /* latches */
+  byte nt_entry, at_entry;
+  byte at_latch;
+  byte pt_latch_lo, pt_latch_hi;
+
+  /* shift register */
+  addr at_shift;
+  addr pt_shift_lo, pt_shift_hi;
+
+  /*** sprite stuff ***/
+  
+
   /* registers */
   byte ctrl;
   byte mask;
@@ -61,7 +78,6 @@ struct ppu_s {
   byte scrollx, scrolly;
   addr addr;
   /* for output */
-  byte current_i, current_j;
   byte frame_buffer[240][256];
 };
 

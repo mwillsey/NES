@@ -37,7 +37,7 @@ void tv_update (tv* tv) {
 
   for (i = 0; i < 240; i++) {
     for (j = 0; j < 256; j++) {
-      color = color_palette[tv->frame_buffer[i*256 + j]];
+      color = color_palette[tv->frame_buffer[i*256 + j] & 63];
       pixels[i*256 + j] = 0xff000000 | color;
     }
   }

@@ -13,13 +13,14 @@ void nes_init (nes *n) {
   ppu_init(n);
   n->lower_bank = &n->c->mem->ram[0x8000];
   n->upper_bank = &n->c->mem->ram[0xc000];
+  n->chr_rom = &n->p->mem->ram[0x0000];
 }
 
 void nes_step (nes *n) {                        
   int i;
   cpu_step(n);
-  /* for (i = 0; i < 20; i++) */
-  /*   ppu_draw_pixel(n); */
+  for (i = 0; i < 7; i++)
+    ppu_step(n);
 }
 
 byte *nes_frame_buffer(nes *n) {
