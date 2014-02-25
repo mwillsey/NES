@@ -16,12 +16,17 @@ void nes_init (nes *n) {
   n->chr_rom = &n->p->mem->ram[0x0000];
 }
 
-void nes_step (nes *n) {                        
+void nes_step (nes *n) {  
   int i;
   cpu_step(n);
-  for (i = 0; i < 7; i++)
-    ppu_step(n);
+  for (i=0; i<7; i++) {
+    /* give 3 cycles to ppu */
+    sem_post(n->p->clock);
+    sem_post(n->p->clock);
+    sem_post(n->p->clock);
+  }
 }
+  
 
 byte *nes_frame_buffer(nes *n) {
   return (byte*) n->p->frame_buffer;

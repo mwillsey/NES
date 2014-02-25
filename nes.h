@@ -9,6 +9,9 @@
 #include <stdlib.h>
 #include <stdbool.h>
 
+#include <pthread.h>
+#include <semaphore.h>
+
 typedef uint8_t  byte;
 typedef uint16_t addr;
 typedef bool     bit;
@@ -35,6 +38,7 @@ typedef struct {
 } memory;
 
 struct cpu_s { 
+  sem_t clock;
   memory *mem;
   /* registers */
   byte A;              /* accumulator */
@@ -45,6 +49,9 @@ struct cpu_s {
 };
 
 struct ppu_s {
+  sem_t clock;
+  sem_t render_clock, bg_clock, oam_clock;
+  
   memory *mem;
 
   int cycle;                    /* 341 per scanline */
@@ -67,6 +74,11 @@ struct ppu_s {
   addr pt_shift_lo, pt_shift_hi;
 
   /*** sprite stuff ***/
+  byte oam1[64][4];
+  byte oam2[8][4];
+  byte spr_shift[8][2];
+  byte spr_latch[8];
+  byte spr_count[8];
   
 
   /* registers */
@@ -88,6 +100,8 @@ void nes_init(nes *n);
 void nes_step(nes *n);
 byte* nes_frame_buffer(nes *n);
 void nes_destroy(nes *n);
+/* new structure */
+void nes_run(nes *n);
 
 void cpu_init (nes *n);
 void cpu_load (nes *n);
